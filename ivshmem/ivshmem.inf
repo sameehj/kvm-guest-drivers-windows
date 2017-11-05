@@ -1,0 +1,90 @@
+;
+; IVSHMEM.inf
+;
+
+[Version]
+Signature="$WINDOWS NT$"
+Class=System
+ClassGuid={4d36e97d-e325-11ce-bfc1-08002be10318}
+Provider=%ManufacturerName%
+CatalogFile=IVSHMEM.cat
+DriverVer= ; TODO: set DriverVer in stampinf property pages
+
+[DestinationDirs]
+DefaultDestDir = 12
+IVSHMEM_Device_CoInstaller_CopyFiles = 11
+
+; ================= Class section =====================
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+IVSHMEM.sys  = 1,,
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll=1 ; make sure the number matches with SourceDisksNames
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$
+
+[Standard.NT$ARCH$]
+%IVSHMEM.DeviceDesc%=IVSHMEM_Device, PCI\VEN_1AF4&DEV_1110
+
+[IVSHMEM_Device.NT]
+CopyFiles=Drivers_Dir
+
+[IVSHMEM_Device.NT.Interfaces]
+AddInterface={df576976-569d-4672-95a0-f57e4ea0b210}
+
+[IVSHMEM_Device.NT.HW]
+AddReg = IVSHMEM_AddReg
+
+[IVSHMEM_AddReg]
+HKR,Interrupt Management,,0x00000010
+HKR,Interrupt Management\MessageSignaledInterruptProperties,,0x00000010
+HKR,Interrupt Management\MessageSignaledInterruptProperties,MSISupported,0x00010001,1
+
+[Drivers_Dir]
+IVSHMEM.sys
+
+;-------------- Service installation
+[IVSHMEM_Device.NT.Services]
+AddService = IVSHMEM,%SPSVCINST_ASSOCSERVICE%, IVSHMEM_Service_Inst
+
+; -------------- IVSHMEM driver install sections
+[IVSHMEM_Service_Inst]
+DisplayName    = %IVSHMEM.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\IVSHMEM.sys
+
+;
+;--- IVSHMEM_Device Coinstaller installation ------
+;
+
+[IVSHMEM_Device.NT.CoInstallers]
+AddReg=IVSHMEM_Device_CoInstaller_AddReg
+CopyFiles=IVSHMEM_Device_CoInstaller_CopyFiles
+
+[IVSHMEM_Device_CoInstaller_AddReg]
+HKR,,CoInstallers32,0x00010000, "WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll,WdfCoInstaller"
+
+[IVSHMEM_Device_CoInstaller_CopyFiles]
+WdfCoInstaller$KMDFCOINSTALLERVERSION$.dll
+
+[IVSHMEM_Device.NT.Wdf]
+KmdfService = IVSHMEM, IVSHMEM_wdfsect
+
+[IVSHMEM_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE= 0x00000002
+ManufacturerName="Red Hat, Inc."
+DiskName = "IVSHMEM Installation Disk"
+IVSHMEM.DeviceDesc = "IVSHMEM Device"
+IVSHMEM.SVCDESC = "IVSHMEM Service"
