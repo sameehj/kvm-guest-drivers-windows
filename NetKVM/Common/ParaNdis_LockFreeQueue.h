@@ -209,3 +209,100 @@ private:
 
     PPARANDIS_ADAPTER m_Context;
 };
+
+
+template <typename TEntryType>
+class CLockFreeDynamicQueue : public CPlacementAllocatable
+{
+public:
+    CLockFreeDynamicQueue() : m_QueueFullListIsEmpty(TRUE)
+    {}
+
+    BOOLEAN Create(PPARANDIS_ADAPTER pContext, INT size)
+    {
+        m_QueueFullListIsEmpty = TRUE;
+        return m_Queue.Create(pContext, size);
+    }
+
+    ~CLockFreeDynamicQueue()
+    {
+        m_Queue.~CLockFreeQueue();
+    }
+
+    // Multiple Producer Safe Enqueue
+    void Enqueue(TEntryType * entry)
+    {
+        if (!m_QueueFullListIsEmpty || !m_Queue.Enqueue(entry))
+        {
+            TPassiveSpinLocker LockedContext(m_QueueFullListLock);
+            m_QueueFullList.PushBack(entry);
+            InterlockedExchange(&m_QueueFullListIsEmpty, m_QueueFullList.IsEmpty());
+        }
+    }
+
+    // Single consumer Dequeue, a lock is needed when using this method
+
+    TEntryType *Dequeue()
+    {
+        return m_Queue.Dequeue();
+    }
+
+    // Multiple consumer Dequeue
+
+    TEntryType *DequeueMC()
+    {
+        return m_Queue.DequeueMC();
+    }
+
+    TEntryType *Peek()
+    {
+        return m_Queue.Peek();
+    }
+
+    BOOLEAN IsEmpty()
+    {
+        return m_Queue.IsEmpty();
+    }
+
+    BOOLEAN IsPowerOfTwo(INT x)
+    {
+        return m_Queue.IsPowerOfTwo(x);
+    }
+
+    BOOLEAN FillQueue()
+    {
+        BOOLEAN res = FALSE;
+        TEntryType *entry = nullptr;
+
+        if (!m_QueueFullListIsEmpty)
+        {
+            TPassiveSpinLocker LockedContext(m_QueueFullListLock);
+            do
+            {
+                entry = m_QueueFullList.Pop();
+                if (entry != nullptr)
+                {
+                    res = m_Queue.Enqueue(entry);
+                    if (!res)
+                    {
+                        m_QueueFullList.Push(entry);
+                    }
+                } else
+                {
+                    break;
+                }
+            } while (res);
+
+            InterlockedExchange(&m_QueueFullListIsEmpty, m_QueueFullList.IsEmpty());
+        }
+        return res;
+    }
+private:
+
+    CLockFreeQueue<TEntryType> m_Queue;
+
+
+    CNdisList<TEntryType, CRawAccess, CNonCountingObject> m_QueueFullList;
+    CNdisSpinLock m_QueueFullListLock;
+    volatile LONG m_QueueFullListIsEmpty;
+};

@@ -325,7 +325,6 @@ typedef struct _tagNET_PACKET_INFO
 
 struct _tagRxNetDescriptor {
     LIST_ENTRY listEntry;
-    LIST_ENTRY ReceiveQueueListEntry;
 
 #define PARANDIS_FIRST_RX_DATA_PAGE   (1)
     struct VirtIOBufferDescriptor *BufferSGArray;

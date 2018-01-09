@@ -580,7 +580,7 @@ bool CParaNdisTX::SendMapped(bool IsInterrupt, CRawCNBLList& toWaitingList)
                     // if this NBL finished?
                     if (!NBLHolder->HaveMappedBuffers())
                     {
-                        /* We use PeekMappedToSendNBL method to get the current NBL
+                        /* We use PeekMappedNBL method to get the current NBL
                          * that should be processed from the queue, when we finish
                          * sending all it's NBs, we should pop it from the queue.
                          */
@@ -674,7 +674,6 @@ bool CParaNdisTX::DoPendingTasks()
                  {
                     m_VirtQueue.ProcessTXCompletions(nbToFree);
                     m_DpcWaiting.Release();
-
                     bRestartQueueStatus = SendMapped(TRUE, completedNBLs);
                     if (bRestartQueueStatus)
                     {

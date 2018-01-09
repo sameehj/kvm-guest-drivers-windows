@@ -1658,6 +1658,7 @@ static void ProcessReceiveQueue(PARANDIS_ADAPTER *pContext,
             pBufferDescriptor->Queue->ReuseReceiveBuffer(pBufferDescriptor);
         }
     }
+    pTargetReceiveQueue->FillQueue();
 }
 
 
