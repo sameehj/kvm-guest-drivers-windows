@@ -281,7 +281,7 @@ CParaNdisTX::~CParaNdisTX()
         NBL = m_SendQueue.Dequeue();
     }
 
-    m_SendQueue.~CLockFreeQueue();
+    m_SendQueue.~CLockFreeDynamicQueue();
 
     DPrintf(1, "Pools state %d-> NB: %d, NBL: %d\n", m_queueIndex, m_nbPool.GetCount(), m_nblPool.GetCount());
     if (m_StateMachineRegistered)
@@ -300,8 +300,6 @@ bool CParaNdisTX::Create(PPARANDIS_ADAPTER Context, UINT DeviceQueueIndex)
 
     m_nbPool.Create(Context->MiniportHandle);
     m_nblPool.Create(Context->MiniportHandle);
-
-    m_SendQueueFullListIsEmpty = TRUE;
 
     return m_VirtQueue.Create(DeviceQueueIndex,
         &m_Context->IODevice,
@@ -394,12 +392,7 @@ void CParaNdisTX::NBLMappingDone(CNBL *NBLHolder)
 
     if (NBLHolder->MappingSucceeded())
     {
-        if (!m_SendQueueFullListIsEmpty || !m_SendQueue.Enqueue(NBLHolder))
-        {
-            TDPCSpinLocker LockedContext(m_SendQueueFullListLock);
-            m_SendQueueFullList.PushBack(NBLHolder);
-            InterlockedExchange(&m_SendQueueFullListIsEmpty, m_SendQueueFullList.IsEmpty());
-        }
+        m_SendQueue.Enqueue(NBLHolder);
 
         if (m_DpcWaiting == 0)
         {
@@ -557,7 +550,7 @@ bool CParaNdisTX::SendMapped(bool IsInterrupt, CRawCNBLList& toWaitingList)
 
         while (HaveBuffers && HaveMappedNBLs())
         {
-            auto NBLHolder = PeekMappedToSendNBL();
+            auto NBLHolder = PeekMappedNBL();
 
             if (NBLHolder->HaveMappedBuffers())
             {
@@ -584,7 +577,7 @@ bool CParaNdisTX::SendMapped(bool IsInterrupt, CRawCNBLList& toWaitingList)
                          * that should be processed from the queue, when we finish
                          * sending all it's NBs, we should pop it from the queue.
                          */
-                        PopMappedToSendNBL();
+                        PopMappedNBL();
                         toWaitingList.Push(NBLHolder);
                     }
                     else
@@ -627,40 +620,6 @@ bool CParaNdisTX::SendMapped(bool IsInterrupt, CRawCNBLList& toWaitingList)
     return bRestartStatus;
 }
 
-bool CParaNdisTX::FillQueue()
-{
-    BOOLEAN res = FALSE;
-    CNBL *nbl;
-
-    if (!m_SendQueueFullListIsEmpty)
-    {
-        TDPCSpinLocker LockedContext(m_SendQueueFullListLock);
-        do
-        {
-            nbl = m_SendQueueFullList.Pop();
-            if (nbl != nullptr)
-            {
-                res = m_SendQueue.Enqueue(nbl);
-                if (!res)
-                {
-                    m_SendQueueFullList.Push(nbl);
-                }
-            } else
-            {
-                break;
-            }
-        } while (res);
-
-        InterlockedExchange(&m_SendQueueFullListIsEmpty, m_SendQueueFullList.IsEmpty());
-    }
-
-    if (!m_SendQueueFullListIsEmpty && m_DpcWaiting == 0)
-    {
-        return TRUE;
-    }
-    return FALSE;
-}
-
 bool CParaNdisTX::DoPendingTasks()
 {
     PNET_BUFFER_LIST pNBLReturnNow = nullptr;
@@ -686,7 +645,7 @@ bool CParaNdisTX::DoPendingTasks()
                     }
                  });
 
-    bRestartQueueStatus |= FillQueue();
+    m_SendQueue.FillQueue();
 
     if (!nbToFree.IsEmpty() || !completedNBLs.IsEmpty())
     {
