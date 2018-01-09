@@ -36,7 +36,7 @@ public:
 
     void KickRXRing();
 
-    PARANDIS_RECEIVE_QUEUE &UnclassifiedPacketsQueue() { return m_UnclassifiedPacketsQueue;  }
+    CLockFreeDynamicQueue<RxNetDescriptor> &UnclassifiedPacketsQueue() { return m_UnclassifiedPacketsQueue;  }
 
 private:
     /* list of Rx buffers available for data (under VIRTIO management) */
@@ -47,7 +47,7 @@ private:
 
     bool m_Reinsert = true;
 
-    PARANDIS_RECEIVE_QUEUE m_UnclassifiedPacketsQueue;
+    CLockFreeDynamicQueue<RxNetDescriptor> m_UnclassifiedPacketsQueue;
 
     void ReuseReceiveBufferNoLock(pRxNetDescriptor pBuffersDescriptor);
 private:

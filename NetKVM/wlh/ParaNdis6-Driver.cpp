@@ -299,10 +299,9 @@ static NDIS_STATUS ParaNdis6_Initialize(
 
         for(ULONG i = 0; i < ARRAYSIZE(pContext->ReceiveQueues); i++)
         {
-            NdisAllocateSpinLock(&pContext->ReceiveQueues[i].Lock);
-            InitializeListHead(&pContext->ReceiveQueues[i].BuffersList);
+            new (&pContext->ReceiveQueues[i]) CLockFreeDynamicQueue<RxNetDescriptor>();
+            pContext->ReceiveQueues[i].Create(pContext, 1024);
         }
-
         pContext->ReceiveQueuesInitialized = TRUE;
 #endif
 
@@ -336,7 +335,7 @@ static NDIS_STATUS ParaNdis6_Initialize(
 
             for (i = 0; i < ARRAYSIZE(pContext->ReceiveQueues); i++)
             {
-                NdisFreeSpinLock(&pContext->ReceiveQueues[i].Lock);
+                pContext->ReceiveQueues[i].~CLockFreeDynamicQueue();
             }
         }
 #endif

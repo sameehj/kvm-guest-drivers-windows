@@ -9,14 +9,10 @@
 CParaNdisRX::CParaNdisRX() : m_nReusedRxBuffersCounter(0), m_NetNofReceiveBuffers(0)
 {
     InitializeListHead(&m_NetReceiveBuffers);
-
-    NdisAllocateSpinLock(&m_UnclassifiedPacketsQueue.Lock);
-    InitializeListHead(&m_UnclassifiedPacketsQueue.BuffersList);
 }
 
 CParaNdisRX::~CParaNdisRX()
 {
-    NdisFreeSpinLock(&m_UnclassifiedPacketsQueue.Lock);
 }
 
 bool CParaNdisRX::Create(PPARANDIS_ADAPTER Context, UINT DeviceQueueIndex)
@@ -31,6 +27,8 @@ bool CParaNdisRX::Create(PPARANDIS_ADAPTER Context, UINT DeviceQueueIndex)
         DPrintf(0, ("CParaNdisRX::Create - virtqueue creation failed\n"));
         return false;
     }
+
+    m_UnclassifiedPacketsQueue.Create(m_Context, 1024);
 
     m_nReusedRxBuffersLimit = m_Context->NetMaxReceiveBuffers / 4 + 1;
 

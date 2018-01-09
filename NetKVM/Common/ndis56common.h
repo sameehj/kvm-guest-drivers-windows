@@ -101,13 +101,6 @@ typedef struct _tagRxNetDescriptor  RxNetDescriptor, *pRxNetDescriptor;
 
 static __inline BOOLEAN ParaNDIS_IsQueueInterruptEnabled(struct virtqueue * _vq);
 
-typedef struct _tagPARANDIS_RECEIVE_QUEUE
-{
-    NDIS_SPIN_LOCK          Lock;
-    LIST_ENTRY              BuffersList;
-    COwnership              Ownership;
-} PARANDIS_RECEIVE_QUEUE, *PPARANDIS_RECEIVE_QUEUE;
-
 #include "ParaNdis-TX.h"
 #include "ParaNdis-RX.h"
 #include "ParaNdis-CX.h"
@@ -336,6 +329,7 @@ struct _tagRxNetDescriptor {
     NET_PACKET_INFO PacketInfo;
 
     CParaNdisRX*                   Queue;
+    DECLARE_CNDISLIST_ENTRY(_tagRxNetDescriptor);
 };
 
 typedef struct _tagPARANDIS_ADAPTER
@@ -423,8 +417,8 @@ typedef struct _tagPARANDIS_ADAPTER
     NDIS_OFFLOAD_PARAMETERS InitialOffloadParameters;
 
 #ifdef PARANDIS_SUPPORT_RSS
-    PARANDIS_RECEIVE_QUEUE      ReceiveQueues[PARANDIS_RSS_MAX_RECEIVE_QUEUES];
-    BOOLEAN                     ReceiveQueuesInitialized;
+    CLockFreeDynamicQueue<RxNetDescriptor> ReceiveQueues[PARANDIS_RSS_MAX_RECEIVE_QUEUES];
+    BOOLEAN                          ReceiveQueuesInitialized;
 #define PARANDIS_FIRST_RSS_RECEIVE_QUEUE    (0)
 #endif
 #define PARANDIS_RECEIVE_UNCLASSIFIED_PACKET (-1)
@@ -563,7 +557,7 @@ NDIS_STATUS ParaNdis_SetupRSSQueueMap(PARANDIS_ADAPTER *pContext);
 #endif
 
 VOID ParaNdis_ReceiveQueueAddBuffer(
-    PPARANDIS_RECEIVE_QUEUE pQueue,
+    CLockFreeDynamicQueue<RxNetDescriptor> *pQueue,
     pRxNetDescriptor pBuffer);
 
 VOID ParaNdis_ProcessorNumberToGroupAffinity(
@@ -596,7 +590,7 @@ CCHAR ParaNdis_GetScalingDataForPacket(
     PPROCESSOR_NUMBER pTargetProcessor);
 
 VOID ParaNdis_ReceiveQueueAddBuffer(
-    PPARANDIS_RECEIVE_QUEUE pQueue,
+    CLockFreeDynamicQueue<RxNetDescriptor> *pQueue,
     pRxNetDescriptor pBuffer);
 
 VOID ParaNdis_ProcessorNumberToGroupAffinity(

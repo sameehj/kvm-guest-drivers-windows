@@ -38,7 +38,7 @@
 
 static VOID ParaNdis_UpdateMAC(PARANDIS_ADAPTER *pContext);
 
-static __inline pRxNetDescriptor ReceiveQueueGetBuffer(PPARANDIS_RECEIVE_QUEUE pQueue);
+static __inline pRxNetDescriptor ReceiveQueueGetBuffer(CLockFreeDynamicQueue<RxNetDescriptor> *pQueue);
 
 #define MAX_VLAN_ID     4095
 
@@ -1365,7 +1365,7 @@ VOID ParaNdis_CleanupContext(PARANDIS_ADAPTER *pContext)
 
         for(i = 0; i < ARRAYSIZE(pContext->ReceiveQueues); i++)
         {
-            NdisFreeSpinLock(&pContext->ReceiveQueues[i].Lock);
+            pContext->ReceiveQueues[i].~CLockFreeDynamicQueue();
         }
     }
 #endif
@@ -1548,30 +1548,22 @@ VOID ParaNdis_QueueRSSDpc(PARANDIS_ADAPTER *pContext, ULONG MessageIndex, PGROUP
 }
 
 
-VOID ParaNdis_ReceiveQueueAddBuffer(PPARANDIS_RECEIVE_QUEUE pQueue, pRxNetDescriptor pBuffer)
+VOID ParaNdis_ReceiveQueueAddBuffer(CLockFreeDynamicQueue<RxNetDescriptor> *pQueue, pRxNetDescriptor pBuffer)
 {
-    NdisInterlockedInsertTailList(  &pQueue->BuffersList,
-                                    &pBuffer->ReceiveQueueListEntry,
-                                    &pQueue->Lock);
+    pQueue->Enqueue(pBuffer);
 }
 
 static __inline
-pRxNetDescriptor ReceiveQueueGetBuffer(PPARANDIS_RECEIVE_QUEUE pQueue)
+pRxNetDescriptor ReceiveQueueGetBuffer(CLockFreeDynamicQueue<RxNetDescriptor> *pQueue)
 {
-    PLIST_ENTRY pListEntry = NdisInterlockedRemoveHeadList(&pQueue->BuffersList, &pQueue->Lock);
-    return pListEntry ? CONTAINING_RECORD(pListEntry, RxNetDescriptor, ReceiveQueueListEntry) : NULL;
+
+    return pQueue->DequeueMC();
 }
 
 static __inline
-BOOLEAN ReceiveQueueHasBuffers(PPARANDIS_RECEIVE_QUEUE pQueue)
+BOOLEAN ReceiveQueueHasBuffers(CLockFreeDynamicQueue<RxNetDescriptor> *pQueue)
 {
-    BOOLEAN res;
-
-    NdisAcquireSpinLock(&pQueue->Lock);
-    res = !IsListEmpty(&pQueue->BuffersList);
-    NdisReleaseSpinLock(&pQueue->Lock);
-
-    return res;
+    return !pQueue->IsEmpty();
 }
 
 static VOID
@@ -1611,15 +1603,15 @@ UpdateReceiveFailStatistics(PPARANDIS_ADAPTER pContext, UINT nCoalescedSegmentsC
 
 static void ProcessReceiveQueue(PARANDIS_ADAPTER *pContext,
                                 PULONG pnPacketsToIndicateLeft,
-                                PPARANDIS_RECEIVE_QUEUE pTargetReceiveQueue,
+                                CLockFreeDynamicQueue<RxNetDescriptor> *pTargetReceiveQueue,
                                 PNET_BUFFER_LIST *indicate,
                                 PNET_BUFFER_LIST *indicateTail,
                                 ULONG *nIndicate)
 {
-    pRxNetDescriptor pBufferDescriptor;
+    pRxNetDescriptor pBufferDescriptor = nullptr;
 
     while( (*pnPacketsToIndicateLeft > 0) &&
-            (NULL != (pBufferDescriptor = ReceiveQueueGetBuffer(pTargetReceiveQueue))) )
+            (NULL != (pBufferDescriptor = pTargetReceiveQueue->DequeueMC())) )
     {
         PNET_PACKET_INFO pPacketInfo = &pBufferDescriptor->PacketInfo;
 
@@ -1689,7 +1681,6 @@ static
 BOOLEAN RxDPCWorkBody(PARANDIS_ADAPTER *pContext, CPUPathBundle *pathBundle, ULONG nPacketsToIndicate)
 {
     BOOLEAN res = FALSE;
-    bool rxPathOwner = false;
     PNET_BUFFER_LIST indicate, indicateTail;
     ULONG nIndicate;
 
@@ -1704,11 +1695,10 @@ BOOLEAN RxDPCWorkBody(PARANDIS_ADAPTER *pContext, CPUPathBundle *pathBundle, ULO
     associated queues */
     if (pathBundle != nullptr)
     {
-        rxPathOwner = pathBundle->rxPath.UnclassifiedPacketsQueue().Ownership.Acquire();
 
         pathBundle->rxPath.ProcessRxRing(CurrCpuReceiveQueue);
 
-        if (rxPathOwner)
+        if (!pathBundle->rxPath.UnclassifiedPacketsQueue().IsEmpty())
         {
             ProcessReceiveQueue(pContext, &nPacketsToIndicate, &pathBundle->rxPath.UnclassifiedPacketsQueue(),
                                 &indicate, &indicateTail, &nIndicate);
@@ -1735,11 +1725,6 @@ BOOLEAN RxDPCWorkBody(PARANDIS_ADAPTER *pContext, CPUPathBundle *pathBundle, ULO
         {
             ParaNdis_ReuseRxNBLs(indicate);
         }
-    }
-
-    if (rxPathOwner)
-    {
-        pathBundle->rxPath.UnclassifiedPacketsQueue().Ownership.Release();
     }
 
     if (pathBundle != nullptr)
@@ -1830,17 +1815,13 @@ VOID ParaNdis_ResetRxClassification(PARANDIS_ADAPTER *pContext)
 
     for(i = PARANDIS_FIRST_RSS_RECEIVE_QUEUE; i < ARRAYSIZE(pContext->ReceiveQueues); i++)
     {
-        PPARANDIS_RECEIVE_QUEUE pCurrQueue = &pContext->ReceiveQueues[i];
-        NdisAcquireSpinLock(&pCurrQueue->Lock);
+        CLockFreeDynamicQueue<RxNetDescriptor> *pCurrQueue = &pContext->ReceiveQueues[i];
 
-        while(!IsListEmpty(&pCurrQueue->BuffersList))
+        while(!pCurrQueue->IsEmpty())
         {
-            PLIST_ENTRY pListEntry = RemoveHeadList(&pCurrQueue->BuffersList);
-            pRxNetDescriptor pBufferDescriptor = CONTAINING_RECORD(pListEntry, RxNetDescriptor, ReceiveQueueListEntry);
+            pRxNetDescriptor pBufferDescriptor = pCurrQueue->DequeueMC();
             ParaNdis_ReceiveQueueAddBuffer(&pBufferDescriptor->Queue->UnclassifiedPacketsQueue(), pBufferDescriptor);
         }
-
-        NdisReleaseSpinLock(&pCurrQueue->Lock);
     }
 }
 #endif
