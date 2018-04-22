@@ -248,6 +248,11 @@ public:
     TEntryType *Dequeue()
     {
         TEntryType * ptr = m_Queue.Dequeue();
+        if (ptr == nullptr)
+        {
+            FillQueue();
+            ptr = m_Queue.Dequeue();
+        }
         DecrementCount(ptr != nullptr);
         return ptr;
     }
@@ -257,18 +262,29 @@ public:
     TEntryType *DequeueMC()
     {
         TEntryType * ptr = m_Queue.DequeueMC();
+        if (ptr == nullptr)
+        {
+            FillQueue();
+            ptr = m_Queue.DequeueMC();
+        }
         DecrementCount(ptr != nullptr);
         return ptr;
     }
 
     TEntryType *Peek()
     {
-        return m_Queue.Peek();
+        TEntryType * element = m_Queue.Peek();
+        if (element == nullptr && !m_QueueFullListIsEmpty)
+        {
+            FillQueue();
+            element = m_Queue.Peek();
+        }
+        return element;
     }
 
     BOOLEAN IsEmpty()
     {
-        return m_Queue.IsEmpty();
+        return m_Queue.IsEmpty() ? (BOOLEAN) m_QueueFullListIsEmpty : FALSE;
     }
 
     BOOLEAN IsPowerOfTwo(INT x)
@@ -286,12 +302,11 @@ private:
         }
     }
 
-    void DecrementCount(BOOLEAN increment)
+    void DecrementCount(BOOLEAN decrement)
     {
-        if (increment)
+        if (decrement)
         {
             InterlockedDecrement(&m_ElementCount);
-            FillQueue();
         }
     }
 
