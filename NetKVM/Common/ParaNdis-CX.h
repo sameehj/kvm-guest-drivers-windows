@@ -3,6 +3,16 @@
 #include "ndis56common.h"
 #include "ParaNdis-AbstractPath.h"
 
+#define MAX_SCATTER_GATHER_BUFFERS 10
+
+struct CBuffer {
+    PVOID buffer;
+    ULONG size;
+    DECLARE_CNDISLIST_ENTRY(CBuffer);
+};
+
+typedef CNdisList<CBuffer, CRawAccess, CCountingObject> BufferList;
+
 class CParaNdisCX : public CParaNdisTemplatePath<CVirtQueue>, public CPlacementAllocatable {
 public:
     CParaNdisCX();
@@ -22,6 +32,21 @@ public:
         int levelIfOK
         );
 
+    BOOLEAN CParaNdisCX::SendControlMessage(
+        UCHAR cls,
+        UCHAR cmd,
+        BufferList &outList,
+        BufferList &inList,
+        int levelIfOK
+        );
+
+    template<typename ...Args>
+    VOID InsertBuffersToList(BufferList &list, CBuffer *buff, Args ... args);
+
 protected:
     tCompletePhysicalAddress m_ControlData;
+
+private:
+    UINT CParaNdisCX::GetBuffer();
+    VOID InsertBuffersToList(BufferList &list);
 };
