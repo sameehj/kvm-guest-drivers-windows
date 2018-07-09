@@ -401,6 +401,7 @@ static void DumpVirtIOFeatures(PPARANDIS_ADAPTER pContext)
         {VIRTIO_F_ANY_LAYOUT, "VIRTIO_F_ANY_LAYOUT"},
         {VIRTIO_RING_F_EVENT_IDX, "VIRTIO_RING_F_EVENT_IDX"},
         {VIRTIO_F_VERSION_1, "VIRTIO_F_VERSION_1"},
+        { VIRTIO_NET_F_CTRL_STEERING_MODE, "VIRTIO_NET_F_CTRL_STEERING_MODE" },
     };
     UINT i;
     for (i = 0; i < sizeof(Features)/sizeof(Features[0]); ++i)
