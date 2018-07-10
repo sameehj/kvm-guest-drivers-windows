@@ -828,6 +828,8 @@ NDIS_STATUS ParaNdis_InitializeContext(
 
 #if PARANDIS_SUPPORT_RSS
     pContext->bMultiQueue = pContext->bControlQueueSupported && AckFeature(pContext, VIRTIO_NET_F_MQ);
+    pContext->bSteeringModeSupported = AckFeature(pContext, VIRTIO_NET_F_CTRL_STEERING_MODE);
+
     if (pContext->bMultiQueue)
     {
         virtio_get_config(&pContext->IODevice, ETH_ALEN + sizeof(USHORT), &pContext->nHardwareQueues,
@@ -1016,6 +1018,92 @@ static NDIS_STATUS SetupDPCTarget(PARANDIS_ADAPTER *pContext)
 }
 
 #if PARANDIS_SUPPORT_RSS
+
+NDIS_STATUS ParaNdis_SetupSteeringMode(PARANDIS_ADAPTER *pContext)
+{
+    if (pContext->bSteeringModeSupported)
+    {
+        BufferList outList;
+        BufferList inList;
+        CBuffer buff;
+        buff.buffer = &(pContext->SupportedModes);
+        buff.size = sizeof(pContext->SupportedModes);
+
+        pContext->CXPath.InsertBuffersToList(inList, &buff);
+
+        if (!pContext->CXPath.SendControlMessage(VIRTIO_NET_CTRL_STEERING_MODE, VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES, outList, inList, 2))
+        {
+            DPrintf(0, "[%s] - Sending VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES control message failed\n", __FUNCTION__);
+        } else if (!!(pContext->SupportedModes.steering_modes && STEERING_MODE_RSS))
+        {
+            UINT i;
+            struct virtio_net_rss_conf conf;
+            struct virtio_net_steering_mode sm_control;
+
+            __u8 *hash_key;
+            ULONG cpuIndex;
+            UINT hash_size = pContext->RSSParameters.ActiveHashingSettings.HashSecretKeySize;
+            __virtio32  *indirection_table;
+            UINT indirection_size = pContext->RSSParameters.ActiveRSSScalingSettings.IndirectionTableSize / sizeof(PROCESSOR_NUMBER);
+
+            hash_key = (__u8 *)NdisAllocateMemoryWithTagPriority(pContext->MiniportHandle, hash_size * sizeof(__u8),
+                PARANDIS_MEMORY_TAG, NormalPoolPriority);
+            if (!hash_key)
+            {
+                return NDIS_STATUS_RESOURCES;
+            }
+            indirection_table = (__virtio32 *)NdisAllocateMemoryWithTagPriority(pContext->MiniportHandle, indirection_size * sizeof(__virtio32),
+                PARANDIS_MEMORY_TAG, NormalPoolPriority);
+            if (!indirection_table)
+            {
+                return NDIS_STATUS_RESOURCES;
+            }
+            for (i = 0; i < hash_size; i++)
+            {
+                hash_key[i] = (__virtio32) pContext->RSSParameters.ActiveHashingSettings.HashSecretKey[i];
+            }
+            for (i = 0; i < indirection_size; i++)
+            {
+                cpuIndex = NdisProcessorNumberToIndex(pContext->RSSParameters.ActiveRSSScalingSettings.IndirectionTable[i]);
+                indirection_table[i] = cpuIndex;
+            }
+            /* To do: Fill the rss conf settings, send the command, make sure it is impleented accordingly. Flip the difinitions of u__8 and virtio32
+            */
+
+            sm_control.steering_mode = STEERING_MODE_RSS;
+            sm_control.command = VIRTIO_NET_SM_CTRL_RSS_SET;
+
+            conf.hash_function = RSS_HASH_FUNCTION_TOEPLITZ;
+            conf.hash_function_flags = pContext->RSSParameters.ActiveHashingSettings.HashInformation;
+            conf.indirection_table_length = indirection_size;
+            conf.hash_key_length = hash_size;
+
+            CBuffer ControlBuff;
+            CBuffer ConfBuff;
+            CBuffer keyBuff;
+            CBuffer indirectionBuff;
+            outList.EmptyList();
+            inList.EmptyList();
+
+            ControlBuff.buffer = &sm_control;
+            ControlBuff.size = sizeof(sm_control);
+            ConfBuff.buffer = &(conf);
+            ConfBuff.size = sizeof(struct virtio_net_rss_conf);
+            keyBuff.buffer = hash_key;
+            keyBuff.size = hash_size;
+            indirectionBuff.buffer = indirection_table;
+            indirectionBuff.size = indirection_size * sizeof(__virtio32);
+            pContext->CXPath.InsertBuffersToList(outList, &ControlBuff, &ConfBuff, &keyBuff, &indirectionBuff);
+
+            if (!pContext->CXPath.SendControlMessage(VIRTIO_NET_CTRL_STEERING_MODE, VIRTIO_NET_CTRL_SM_CONTROL, outList, inList, 2))
+            {
+                DPrintf(0, "[%s] - Sending VIRTIO_NET_CTRL_SM_GET_SUPPORTED_MODES control message failed\n", __FUNCTION__);
+            }
+        }
+    }
+    return NDIS_STATUS_SUCCESS;
+}
+
 NDIS_STATUS ParaNdis_SetupRSSQueueMap(PARANDIS_ADAPTER *pContext)
 {
     USHORT rssIndex, bundleIndex;

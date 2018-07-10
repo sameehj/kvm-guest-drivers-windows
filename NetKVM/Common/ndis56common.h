@@ -475,6 +475,8 @@ typedef struct _tagPARANDIS_ADAPTER
     NDIS_RECEIVE_SCALE_CAPABILITIES RSSCapabilities;
     PARANDIS_RSS_PARAMS         RSSParameters;
     CCHAR                       RSSMaxQueuesNumber;
+    BOOLEAN                     bSteeringModeSupported;
+    virtio_net_steering_modes   SupportedModes;
 #endif
 
 #if PARANDIS_SUPPORT_RSC
