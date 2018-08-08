@@ -1841,7 +1841,28 @@ void ParaNdis_ReuseRxNBLs(PNET_BUFFER_LIST pNBL)
     }
 }
 
-bool ParaNdis_DPCWorkBody(PARANDIS_ADAPTER *pContext, ULONG ulMaxPacketsToIndicate)
+void ParaNdis_CXDPCWorkBody(PARANDIS_ADAPTER *pContext)
+{
+    InterlockedIncrement(&pContext->counterDPCInside);
+    if (pContext->bEnableInterruptHandlingDPC && pContext->CXPath.WasInterruptReported())
+    {
+        if (pContext->bLinkDetectSupported)
+        {
+            ReadLinkState(pContext);
+            ParaNdis_SynchronizeLinkState(pContext);
+        }
+        if (pContext->bGuestAnnounceSupported && pContext->bGuestAnnounced)
+        {
+            ParaNdis_SendGratuitousArpPacket(pContext);
+            pContext->CXPath.SendControlMessage(VIRTIO_NET_CTRL_ANNOUNCE, VIRTIO_NET_CTRL_ANNOUNCE_ACK, NULL, 0, NULL, 0, 0);
+            pContext->bGuestAnnounced = FALSE;
+        }
+        pContext->CXPath.ClearInterruptReport();
+    }
+    InterlockedDecrement(&pContext->counterDPCInside);
+}
+
+bool ParaNdis_RXTXDPCWorkBody(PARANDIS_ADAPTER *pContext, ULONG ulMaxPacketsToIndicate)
 {
     bool stillRequiresProcessing = false;
     UINT numOfPacketsToIndicate = min(ulMaxPacketsToIndicate, pContext->uNumberOfHandledRXPacketsInDPC);
@@ -1873,21 +1894,6 @@ bool ParaNdis_DPCWorkBody(PARANDIS_ADAPTER *pContext, ULONG ulMaxPacketsToIndica
         {
             stillRequiresProcessing = true;
         }
-        if (pContext->CXPath.WasInterruptReported())
-        {
-            if (pContext->bLinkDetectSupported)
-            {
-                ReadLinkState(pContext);
-                ParaNdis_SynchronizeLinkState(pContext);
-            }
-            if (pContext->bGuestAnnounceSupported && pContext->bGuestAnnounced)
-            {
-                ParaNdis_SendGratuitousArpPacket(pContext);
-                pContext->CXPath.SendControlMessage(VIRTIO_NET_CTRL_ANNOUNCE, VIRTIO_NET_CTRL_ANNOUNCE_ACK, NULL, 0, NULL, 0, 0);
-                pContext->bGuestAnnounced = FALSE;
-            }
-            pContext->CXPath.ClearInterruptReport();
-        }
 
         if (pathBundle != nullptr && pathBundle->txPath.DoPendingTasks(nullptr))
         {
@@ -1895,6 +1901,14 @@ bool ParaNdis_DPCWorkBody(PARANDIS_ADAPTER *pContext, ULONG ulMaxPacketsToIndica
         }
     }
     InterlockedDecrement(&pContext->counterDPCInside);
+
+    return stillRequiresProcessing;
+}
+
+bool ParaNdis_DPCWorkBody(PARANDIS_ADAPTER *pContext, ULONG ulMaxPacketsToIndicate)
+{
+    bool stillRequiresProcessing = ParaNdis_RXTXDPCWorkBody(pContext, ulMaxPacketsToIndicate);
+    ParaNdis_CXDPCWorkBody(pContext);
 
     return stillRequiresProcessing;
 }
