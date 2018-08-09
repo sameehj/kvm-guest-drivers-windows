@@ -56,6 +56,11 @@ public:
 
     ULONG getCPUIndex();
 
+    LARGE_INTEGER& GetLastInterruptTimestamp()
+    {
+        return m_LastInterruptTimeStamp;
+    }
+
 #if NDIS_SUPPORT_NDIS620
     GROUP_AFFINITY DPCAffinity;
 #else
@@ -65,6 +70,7 @@ public:
 protected:
     PPARANDIS_ADAPTER m_Context;
     CVirtQueue *m_pVirtQueue;
+    LARGE_INTEGER m_LastInterruptTimeStamp;
 
     u16 m_messageIndex = (u16)-1;
     u16 m_queueIndex = (u16)-1;
@@ -112,6 +118,7 @@ public:
             m_VirtQueue.DoNotTouchHardware();
         }
     }
+
 protected:
     CNdisSpinLock m_Lock;
     bool m_ObserverAdded;
