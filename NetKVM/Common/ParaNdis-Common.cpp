@@ -1194,6 +1194,11 @@ NDIS_STATUS ParaNdis_SetupRSSQueueMap(PARANDIS_ADAPTER *pContext)
         pContext->RSS2QueueMap[rssIndex] = pContext->pPathBundles + bundleIndex;
     }
 
+    if (pContext->bSteeringModeSupported)
+    {
+        ParaNdis_SetupSteeringMode(pContext);
+    }
+
     NdisFreeMemoryWithTagPriority(pContext->MiniportHandle, cpuIndexTable, PARANDIS_MEMORY_TAG);
     return NDIS_STATUS_SUCCESS;
 }
