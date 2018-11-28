@@ -707,12 +707,12 @@ static void PrintPRRL(PIO_RESOURCE_REQUIREMENTS_LIST prrl)
     }
 }
 
-static void SetupInterrruptAffinity(PIO_RESOURCE_REQUIREMENTS_LIST prrl)
+static void SetupInterrruptAffinity(PIO_RESOURCE_REQUIREMENTS_LIST prrl, UINT max_vectors)
 {
     PIO_RESOURCE_LIST list;
     ULONG procIndex = 0;
     int interruptDescNum = 0;
-
+    UINT assignedVectorsCount = 0;
     list = prrl->List;
 
     for (ULONG ix = 0; ix < prrl->AlternativeLists; ++ix)
@@ -723,7 +723,7 @@ static void SetupInterrruptAffinity(PIO_RESOURCE_REQUIREMENTS_LIST prrl)
 
             desc = list->Descriptors + jx;
 
-            if (desc->Type == CmResourceTypeInterrupt && (desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE))
+            if (desc->Type == CmResourceTypeInterrupt && (desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) && assignedVectorsCount <= max_vectors)
             {
                 desc->u.Interrupt.AffinityPolicy = IrqPolicySpecifiedProcessors;
 #if defined(NT_PROCESSOR_GROUPS)
@@ -738,6 +738,7 @@ static void SetupInterrruptAffinity(PIO_RESOURCE_REQUIREMENTS_LIST prrl)
                     desc->u.Interrupt.TargetedProcessors = 1i64 << procNumber.Number;
                     DPrintf(0, "[%s]: Assigning CmResourceTypeInterrupt, min/max = %lx/%lx Option = 0x%lx, ShareDisposition = %u to #CPU = %d\n", __FUNCTION__,
                         desc->u.Interrupt.MinimumVector, desc->u.Interrupt.MaximumVector, desc->Option, desc->ShareDisposition, procNumber.Number);
+                    assignedVectorsCount++;
                 }
                 else
                 {
@@ -782,6 +783,7 @@ static PIO_RESOURCE_REQUIREMENTS_LIST ParseFilterResourceIrp(
     PIO_RESOURCE_REQUIREMENTS_LIST newPrrl = NULL;
     ULONG QueueNumber;
     BOOLEAN MSIResourceListed = FALSE;
+    PARANDIS_ADAPTER *pContext = (PARANDIS_ADAPTER *)MiniportAddDeviceContext;
 #if NDIS_SUPPORT_NDIS620    
     QueueNumber = NdisGroupActiveProcessorCount(ALL_PROCESSOR_GROUPS) * 2 + 1;
 #elif NDIS_SUPPORT_NDIS6
@@ -860,7 +862,7 @@ static PIO_RESOURCE_REQUIREMENTS_LIST ParseFilterResourceIrp(
     }
     if (!bRemoveMSIResources)
     {
-        SetupInterrruptAffinity(newPrrl);
+        SetupInterrruptAffinity(newPrrl, 2 * pContext->nPathBundles + 2);
     }
     if (bRemoveMSIResources && nRemoved)
     {
